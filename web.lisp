@@ -75,6 +75,10 @@
 (defstruct render-state
   (element-ids ()))
 
+(defun render-state-collect-id! (render-state id)
+  (setf (render-state-element-ids render-state)
+        (cons id (render-state-element-ids render-state))))
+
 (defun render (document-tree state)
   (declare (type (or list string) document-tree)
            (type render-state state))
@@ -85,11 +89,12 @@
     (cond ((stringp document-tree) document-tree)
           ((html-attribute? document-tree)
            (when (eq (car document-tree) :id)
-             (setf (render-state-element-ids state)
-                   (cons (cadr document-tree) (render-state-element-ids state))))
+             (render-state-collect-id! state (cadr document-tree)))
            (format nil "~a=~C~A~C "
                    (car document-tree)
                    #\" (cadr document-tree) #\"))
+          ((equal document-tree '(@runtime))
+           (format nil "<script>x = document.getElementById('counter');</script>"))
           (t (let* ((element-name (car document-tree))
                     (contents (cdr document-tree))
                     (attributes (remove-if-not #'html-attribute? contents))
@@ -121,7 +126,10 @@
      (meta (:charset "utf-8"))
      (link (:rel "stylesheet") (:href "/style.css"))
      (title "Lisp website"))
-    (body ,@body ,(copyright))))
+    (body
+     ,@body
+     ,(copyright)
+     (@runtime))))
 
 (defmacro defpage (route &body elements)
   `(add-page ,route (lambda () (page ,@elements))))
@@ -183,9 +191,10 @@
 (defun respond (page-generator render-state)
   (declare (type function page-generator)
            (type render-state render-state))
-  (let ((text (render (funcall page-generator)
-                      render-state)))
-    (make-response text)))
+    (make-response
+     (render
+      (funcall page-generator)
+      render-state)))
 
 (defun request-handler-3 (method path protocol)
   (let ((render-state (make-render-state)))
@@ -244,8 +253,10 @@
   `((h1 "Clicker game")
     (p ,(link "/" "Back"))
     (p "Yes, it's written in Common Lisp.")
-    (p (button "Click me"
-               (:onclick "const x = document.getElementById('counter'); x.textContent = Number(x.textContent) + 1"))
-       (span (:id "counter") "0"))))
+    (p (button "Decrease"
+               (:onclick "x.textContent = Number(x.textContent) - 1"))
+       (span (:id "counter") "0")
+       (button "Increase"
+               (:onclick "x.textContent = Number(x.textContent) + 1")))))
 
 (run-server 8092)
