@@ -72,24 +72,19 @@
   (or (eq element-name "meta")
       (eq element-name "img")))
 
+
+;;====== Render state
+
 (defstruct render-state
-  (element-ids ()))
-
-(dolist (n (list 1 2 3))
-  (print n))
-
-(defun make-runtime (render-state)
-  "Generates a runtime JavaScript for the page."
-  (with-output-to-string (string)
-    (write-string "<script>" string)
-    (write-string "D = {};" string)
-    (dolist (id (render-state-element-ids render-state))
-        (format string "D.~A = document.getElementById('~A');" id id))
-    (write-string "</script>" string)))
+  (element-ids ())
+  (js-code ()))
 
 (defun render-state-collect-id! (render-state id)
-  (setf (render-state-element-ids render-state)
-        (cons id (render-state-element-ids render-state))))
+  (push id (render-state-element-ids render-state)))
+
+(defun render-state-collect-js! (render-state js)
+  (dolist (line js)
+    (push line (render-state-js-code render-state))))
 
 (defun render (document-tree state)
   (declare (type (or list string) document-tree)
@@ -107,6 +102,8 @@
                    #\" (cadr document-tree) #\"))
           ((equal document-tree '(@runtime))
            (make-runtime state))
+          ((eq (car document-tree) '@script)
+           (render-state-collect-js! state (cdr document-tree)))
           (t (let* ((element-name (car document-tree))
                     (contents (cdr document-tree))
                     (attributes (remove-if-not #'html-attribute? contents))
@@ -120,6 +117,20 @@
                        (render-children attributes)
                        (render-children children)
                        element-name))))))
+
+;;====== Runtime
+
+(defun make-runtime (render-state)
+  "Generates a runtime JavaScript for the page."
+  (with-output-to-string (string)
+    (write-string "<script>" string)
+    (write-string "D = {};" string)
+    (dolist (id (render-state-element-ids render-state))
+        (format string "D.~A = document.getElementById('~A');" id id))
+    (dolist (js (reverse (render-state-js-code render-state)))
+        (format string "~A" js))
+    (write-string "</script>" string)))
+
 
 (defun add-page (route elements)
   (let ((existing-page (get-page route)))
@@ -263,12 +274,32 @@
 
 (defpage "/clicker"
   `((h1 "Clicker game")
+    (@script
+     "function topCounter() {"
+     "  return Number(D.counter.textContent);"
+     "}"
+     "function bottomCounter() {"
+     "  return Number(D.nounter.textContent);"
+     "}"
+     "function setTopCounter(value) {"
+     "  D.counter.textContent = value;"
+     "}"
+     "function setBottomCounter(value) {"
+     "  D.nounter.textContent = value;"
+     "}"
+     )
     (p ,(link "/" "Back"))
     (p "Yes, it's written in Common Lisp.")
     (p (button "Decrease"
-               (:onclick "D.counter.textContent = Number(D.counter.textContent) - 1"))
+               (:onclick "setTopCounter(topCounter() - bottomCounter())"))
        (span (:id "counter") "0")
        (button "Increase"
-               (:onclick "D.counter.textContent = Number(D.counter.textContent) + 1")))))
+               (:onclick "setTopCounter(topCounter() + bottomCounter())")))
+    (p (button "Decrease"
+               (:onclick "setBottomCounter(bottomCounter() - 1)"))
+       (span (:id "nounter") "1")
+       (button "Increase"
+               (:onclick "setBottomCounter(bottomCounter() + 1)")))
+    (p "No, it's not the most fun part about it.")))
 
 (run-server 8092)
