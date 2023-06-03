@@ -2,8 +2,9 @@
   "My web server"
   (require 'sb-bsd-sockets)
   (defpackage :server (:use :cl))
-  (in-package :server)
-  (defconstant %pending-connections-queue-length% 1))
+  (in-package :server))
+
+(defconstant %pending-connections-queue-length% 1)
 
 (progn
   "Types"
@@ -49,7 +50,6 @@
     (unwind-protect
          (let* ((request (sb-bsd-sockets:socket-receive client buffer nil))
                 (response (funcall handler request)))
-           (print response)
            (sb-bsd-sockets:socket-send client
                                        response
                                        (length response)
@@ -72,26 +72,37 @@
   (or (eq element-name "meta")
       (eq element-name "img")))
 
-(defun render (document-tree)
-  (declare (type (or list string) document-tree))
-  (cond ((stringp document-tree) document-tree)
-        ((html-attribute? document-tree)
-         (format nil "~a=~C~A~C "
-                 (car document-tree)
-                 #\" (cadr document-tree) #\"))
-        (t (let* ((element-name (car document-tree))
-                  (contents (cdr document-tree))
-                  (attributes (remove-if-not #'html-attribute? contents))
-                  (children (remove-if #'html-attribute? contents)))
-             (if (html-self-closing? element-name)
-                 (format nil "<~A ~{~A~}>"
-                         element-name
-                         (mapcar #'render attributes)))
-                 (format nil "<~A ~{~A~}>~{~A~}</~A>"
-                         element-name
-                         (mapcar #'render attributes)
-                         (mapcar #'render children)
-                         element-name)))))
+(defstruct render-state
+  (element-ids ()))
+
+(defun render (document-tree state)
+  (declare (type (or list string) document-tree)
+           (type render-state state))
+  (labels ((render-children (children)
+             (mapcar (lambda (child)
+                       (render child state))
+                     children)))
+    (cond ((stringp document-tree) document-tree)
+          ((html-attribute? document-tree)
+           (when (eq (car document-tree) :id)
+             (setf (render-state-element-ids state)
+                   (cons (cadr document-tree) (render-state-element-ids state))))
+           (format nil "~a=~C~A~C "
+                   (car document-tree)
+                   #\" (cadr document-tree) #\"))
+          (t (let* ((element-name (car document-tree))
+                    (contents (cdr document-tree))
+                    (attributes (remove-if-not #'html-attribute? contents))
+                    (children (remove-if #'html-attribute? contents)))
+               (if (html-self-closing? element-name)
+                   (format nil "<~A ~{~A~}>"
+                           element-name
+                           (render-children attributes)))
+               (format nil "<~A ~{~A~}>~{~A~}</~A>"
+                       element-name
+                       (render-children attributes)
+                       (render-children children)
+                       element-name))))))
 
 (defun add-page (route elements)
   (let ((existing-page (get-page route)))
@@ -169,19 +180,32 @@
          (line (subseq request 0 pos)))
     (partition line #\space)))
 
+(defun respond (page-generator render-state)
+  (declare (type function page-generator)
+           (type render-state render-state))
+  (let ((text (render (funcall page-generator)
+                      render-state)))
+    (make-response text)))
+
+(defun request-handler-3 (method path protocol)
+  (let ((render-state (make-render-state)))
+    (let ((page (get-page path))
+          (static-resource (format nil "./static/~A" path)))
+      (if page
+          (progn
+            (respond (cdr page)
+                     render-state))
+          (if (probe-file static-resource)
+              (respond (lambda ()
+                         (read-file static-resource))
+                       render-state)
+              (progn
+                (respond (cdr (get-page "/notfound"))
+                         render-state)))))))
+
 (defun request-handler (request)
-  (destructuring-bind (- path -) (get-path request)
-    (labels ((respond (page-generator)
-               (let ((text (render (funcall page-generator))))
-                 (make-response text))))
-      (let ((page (get-page path))
-            (static-resource (format nil "./static/~A" path)))
-        (if page
-            (respond (cdr page))
-            (if (probe-file static-resource)
-                (respond (lambda ()
-                           (read-file static-resource)))
-                (respond (cdr (get-page "/notfound")))))))))
+  (destructuring-bind (method path protocol) (get-path request)
+    (request-handler-3 method path protocol)))
 
 (defun run-server (port)
   (let ((socket (make-socket '(127 0 0 1) port)))
@@ -192,19 +216,18 @@
         (format t "Closing connection~%")
         (sb-bsd-sockets:socket-close socket)))))
 
-(run-server 8091)
+(defpage "/notfound"
+  `((h1 "404: Page not found")
+    (p "It's not here...")))
 
 (defpage "/"
   `((h1 "Maria Zaitseva")
     (p "I'm a software developer located at Novosibirsk, Russia.")
     (p "I mostly use Javascript and Swift in my projects.")
     (p "This website is written in Common Lisp.")
-    (p "You are at main page. " ,(link "/bio" "See my biography."))
+    (p ,(link "/bio" "See my biography."))
+    (p ,(link "/clicker" "Play a clicker game."))
     (p "See a page that " ,(link "/notexist" "doesn't exit."))))
-
-(defpage "/notfound"
-  `((h1 "404: Page not found")
-    (p "It's not here..."))))
 
 (defpage "/bio"
   `((h1 "My biography")
@@ -216,3 +239,13 @@
        "programming manual lying around for years")
     (p "I kept reading and re-reading the book for many many hours, "
        "imagining what would it be like if I could program a real computer.")))
+
+(defpage "/clicker"
+  `((h1 "Clicker game")
+    (p ,(link "/" "Back"))
+    (p "Yes, it's written in Common Lisp.")
+    (p (button "Click me"
+               (:onclick "const x = document.getElementById('counter'); x.textContent = Number(x.textContent) + 1"))
+       (span (:id "counter") "0"))))
+
+(run-server 8092)
