@@ -8,7 +8,6 @@
 
 (progn
   "Types"
-
   ;; Inspired by https://stackoverflow.com/a/68974996
   (defun list-of-numbers-p (list)
     "Returns T if LIST only contains numbers."
@@ -260,8 +259,7 @@
     (p "This website is written in Common Lisp.")
     (p ,(link "/bio" "See my biography."))
     (p ,(link "/clicker" "Play a clicker game."))
-    (p ,(link "/canvas" "See a canvas demo."))
-    (p "See a page that " ,(link "/notexist" "doesn't exit."))))
+    (p ,(link "/canvas" "See a canvas demo."))))
 
 (defpage "/bio"
   `((h1 "My biography")

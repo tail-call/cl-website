@@ -1,0 +1,16 @@
+body {
+    font-family: monospace;
+    margin-left: 3em
+}
+
+footer {
+    color: gray;
+    font-size: 75%;
+}
+
+#counter, #nounter {
+    margin-left: 90px;
+    margin-right: 90px;
+    width: 600px;
+    font-size: 150%;
+}
