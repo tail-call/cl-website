@@ -75,6 +75,18 @@
 (defstruct render-state
   (element-ids ()))
 
+(dolist (n (list 1 2 3))
+  (print n))
+
+(defun make-runtime (render-state)
+  "Generates a runtime JavaScript for the page."
+  (with-output-to-string (string)
+    (write-string "<script>" string)
+    (write-string "D = {};" string)
+    (dolist (id (render-state-element-ids render-state))
+        (format string "D.~A = document.getElementById('~A');" id id))
+    (write-string "</script>" string)))
+
 (defun render-state-collect-id! (render-state id)
   (setf (render-state-element-ids render-state)
         (cons id (render-state-element-ids render-state))))
@@ -94,7 +106,7 @@
                    (car document-tree)
                    #\" (cadr document-tree) #\"))
           ((equal document-tree '(@runtime))
-           (format nil "<script>x = document.getElementById('counter');</script>"))
+           (make-runtime state))
           (t (let* ((element-name (car document-tree))
                     (contents (cdr document-tree))
                     (attributes (remove-if-not #'html-attribute? contents))
@@ -254,9 +266,9 @@
     (p ,(link "/" "Back"))
     (p "Yes, it's written in Common Lisp.")
     (p (button "Decrease"
-               (:onclick "x.textContent = Number(x.textContent) - 1"))
+               (:onclick "D.counter.textContent = Number(D.counter.textContent) - 1"))
        (span (:id "counter") "0")
        (button "Increase"
-               (:onclick "x.textContent = Number(x.textContent) + 1")))))
+               (:onclick "D.counter.textContent = Number(D.counter.textContent) + 1")))))
 
 (run-server 8092)
