@@ -103,7 +103,8 @@
           ((equal document-tree '(@runtime))
            (make-runtime state))
           ((eq (car document-tree) '@script)
-           (render-state-collect-js! state (cdr document-tree)))
+           (render-state-collect-js! state (cdr document-tree))
+           "")                          ; Write empty line
           (t (let* ((element-name (car document-tree))
                     (contents (cdr document-tree))
                     (attributes (remove-if-not #'html-attribute? contents))
@@ -259,6 +260,7 @@
     (p "This website is written in Common Lisp.")
     (p ,(link "/bio" "See my biography."))
     (p ,(link "/clicker" "Play a clicker game."))
+    (p ,(link "/canvas" "See a canvas demo."))
     (p "See a page that " ,(link "/notexist" "doesn't exit."))))
 
 (defpage "/bio"
@@ -301,5 +303,14 @@
        (button "Increase"
                (:onclick "setBottomCounter(bottomCounter() + 1)")))
     (p "No, it's not the most fun part about it.")))
+
+(defpage "/canvas"
+  `((h1 "Canvas demo")
+    (@script
+     "const ctx = D.canvas.getContext('2d');"
+     "ctx.lineWidth = 10;"
+     "ctx.strokeRect(0, 0, 150, 110);")
+    (p ,(link "/" "Back"))
+    (canvas (:id "canvas"))))
 
 (run-server 8092)
