@@ -17,6 +17,9 @@
   (deftype list-of-numbers ()
     `(and list (satisfies list-of-numbers-p))))
 
+(defvar *pages* ()
+  "An alist of all routes and pages")
+
 (defun make-socket (address port)
   "Returns a socket listening to an ADDRESS at specified PORT."
   (declare (type list-of-numbers address)
@@ -90,9 +93,6 @@
                          (mapcar #'render children)
                          element-name)))))
 
-(defvar *pages* ()
-  "An alist of all routes and pages")
-
 (defun add-page (route elements)
   (let ((existing-page (get-page route)))
     (if existing-page
@@ -108,7 +108,7 @@
   `(html
     (head
      (meta (:charset "utf-8"))
-     (style "body { font-family: monospace; margin-left: 3em } footer { color: gray; font-size: 75%; }")
+     (link (:rel "stylesheet") (:href "/style.css"))
      (title "Lisp website"))
     (body ,@body ,(copyright))))
 
@@ -116,6 +116,8 @@
   `(add-page ,route (lambda () (page ,@elements))))
 
 (defun link (href text)
+  (declare (type string href)
+           (type string text))
   `(a (:href ,href) ,text))
 
 (defun copyright ()
@@ -152,7 +154,16 @@
 (destructuring-bind (method path protocol) (partition "GET / HTTP/1.1" #\space)
   (format nil "Method: ~A~%Path: ~A~%Protocol:~A~%" method path protocol))
 
+;; https://riptutorial.com/common-lisp/example/19473/reading-and-writing-entire-files-to-and-from-strings#example
+(defun read-file (infile)
+  (with-open-file (instream infile :direction :input :if-does-not-exist nil)
+    (when instream
+      (let ((string (make-string (file-length instream))))
+        (read-sequence string instream)
+        string))))
+
 (defun get-path (request)
+  "Gets a request method, a path, and a protocol version from request."
   (declare (type string request))
   (let* ((pos (position #\return request))
          (line (subseq request 0 pos)))
@@ -163,10 +174,14 @@
     (labels ((respond (page-generator)
                (let ((text (render (funcall page-generator))))
                  (make-response text))))
-      (let ((page (get-page path)))
+      (let ((page (get-page path))
+            (static-resource (format nil "./static/~A" path)))
         (if page
             (respond (cdr page))
-            (respond (cdr (get-page "/notfound"))))))))
+            (if (probe-file static-resource)
+                (respond (lambda ()
+                           (read-file static-resource)))
+                (respond (cdr (get-page "/notfound")))))))))
 
 (defun run-server (port)
   (let ((socket (make-socket '(127 0 0 1) port)))
