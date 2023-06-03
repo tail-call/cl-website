@@ -90,28 +90,36 @@
                          (mapcar #'render children)
                          element-name)))))
 
+(defvar *pages* ()
+  "An alist of all routes and pages")
+
+(defun add-page (route elements)
+  (let ((existing-page (get-page route)))
+    (if existing-page
+        (progn
+          (setf (car existing-page) route)
+          (setf (cdr existing-page) elements))
+        (setf *pages* (acons route elements *pages*)))))
+
+(defun get-page (route)
+  (assoc route *pages* :test 'equal))
+
 (defun page (body)
   `(html
     (head
      (meta (:charset "utf-8"))
-     (title "Lisp website")
-     (body
-      ,@body))))
+     (style "body { font-family: monospace; margin-left: 3em } footer { color: gray; font-size: 75%; }")
+     (title "Lisp website"))
+    (body ,@body ,(copyright))))
 
-(defun main-page ()
-  (page `((h1 "Common Lisp did this")
-          (p "You are at main page. " (a (:href "/demo") "See a path demo."))
-          (p "See a page that " (a (:href "/notexist") "doesn't exit."))
-          (p "I like it " (strong "a lot") "."))))
+(defmacro defpage (route &body elements)
+  `(add-page ,route (lambda () (page ,@elements))))
 
-(defun not-found-page ()
-  (page `((h1 "404: Page not found")
-          (p "It's not here..."))))
+(defun link (href text)
+  `(a (:href ,href) ,text))
 
-(defun demo-page ()
-  (page `((h1 "Link demo")
-          (p "Welcome to this linked page!")
-          (p (a (:href "/") "Back")))))
+(defun copyright ()
+  `(footer "Copyright 2023 by Maria Zaitseva"))
 
 (defun make-response (body)
   (let ((lines (list
@@ -155,16 +163,41 @@
     (labels ((respond (page-generator)
                (let ((text (render (funcall page-generator))))
                  (make-response text))))
-      (cond ((equal path "/demo") (respond #'demo-page))
-            ((equal path "/") (respond #'main-page))
-            (t (respond #'not-found-page))))))
+      (let ((page (get-page path)))
+        (if page
+            (respond (cdr page))
+            (respond (cdr (get-page "/notfound"))))))))
 
-(progn
-  "Entry point"
-  (let ((socket (make-socket '(127 0 0 1) 8091)))
+(defun run-server (port)
+  (let ((socket (make-socket '(127 0 0 1) port)))
     (unwind-protect
          (runloop socket (lambda (request)
                            (request-handler request)))
       (progn
         (format t "Closing connection~%")
         (sb-bsd-sockets:socket-close socket)))))
+
+(run-server 8091)
+
+(defpage "/"
+  `((h1 "Maria Zaitseva")
+    (p "I'm a software developer located at Novosibirsk, Russia.")
+    (p "I mostly use Javascript and Swift in my projects.")
+    (p "This website is written in Common Lisp.")
+    (p "You are at main page. " ,(link "/bio" "See my biography."))
+    (p "See a page that " ,(link "/notexist" "doesn't exit."))))
+
+(defpage "/notfound"
+  `((h1 "404: Page not found")
+    (p "It's not here..."))))
+
+(defpage "/bio"
+  `((h1 "My biography")
+    (p ,(link "/" "Back"))
+    (p "I was born at March 13, 1994.")
+    (p "I think I got my first computer when I was 5.")
+    (p "It was a Famiclone machine with a keyboard capable of running BASIC programs.")
+    (p "The machine broke soon after, but I still had the BASIC "
+       "programming manual lying around for years")
+    (p "I kept reading and re-reading the book for many many hours, "
+       "imagining what would it be like if I could program a real computer.")))
